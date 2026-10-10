@@ -45,6 +45,11 @@ const sw = `
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => navigator.serviceWorker.register('${base}/sw.js').catch(() => {}));
+        // A new version was installed in the background: reload once so the user sees it now, not next time.
+        let reloaded = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (navigator.serviceWorker.controller && !reloaded) { reloaded = true; location.reload(); }
+        });
       }
     </script>`;
 html = html.replace('</body>', `${sw}\n  </body>`);
