@@ -1,5 +1,6 @@
 import { registerRootComponent } from 'expo';
 
+import './src/workoutTask'; // defines the background task for lock-screen buttons
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

@@ -1,17 +1,25 @@
 {
   "expo": {
-    "name": "calorie-tracker",
+    "name": "Burn Tracker",
     "slug": "calorie-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMotionUsageDescription": "Counts your steps to estimate calories burned walking."
+      }
     },
     "android": {
+      "package": "com.rushikesh.burntracker",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.ACTIVITY_RECOGNITION"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FF6B2C",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -20,6 +28,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b68dac22-4339-4046-8873-73a1a7c425f0"
+      }
+    },
+    "plugins": [
+      "expo-sharing"
+    ]
   }
 }
