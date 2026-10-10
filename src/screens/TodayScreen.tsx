@@ -3,9 +3,11 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Alert } from '../alert';
 import { Pedometer } from 'expo-sensors';
 import { bmr, fromKg, Profile, stepsToKm, Units, walkingKcal } from '../calc';
-import { DayLog, dateKey, loadStreak, LogEntry } from '../storage';
+import { LinearGradient } from 'expo-linear-gradient';
+import { DayLog, dateKey, loadDay, loadStreak, LogEntry, saveDay } from '../storage';
 import { themed, useC } from '../theme';
-import { AnimatedNumber, Button, Card, FadeIn, Field, fmt, haptic, num, ProgressRing, Tap, Title, toast } from '../ui';
+import { AnimatedNumber, BRAND_GRADIENT, Button, Card, FadeIn, Field, fmt, haptic, num, ProgressRing, Tap, Title, toast } from '../ui';
+import EditEntryModal from './EditEntryModal';
 
 type Props = {
   profile: Profile;
@@ -57,6 +59,16 @@ export default function TodayScreen({ profile, date, setDate, day, updateDay, on
   const tracking = trackingOn && isToday; // live counting only applies to today
   const baseSteps = useRef(0);
   const [streak, setStreak] = useState(0);
+  const [editing, setEditing] = useState<LogEntry | null>(null);
+  const [yesterday, setYesterday] = useState<{ date: string; log: DayLog } | null>(null);
+  const [ySteps, setYSteps] = useState('');
+
+  // "Forgot yesterday's steps?" — only on today, only if yesterday has no steps logged.
+  useEffect(() => {
+    if (!isToday) return;
+    const yd = shiftDate(date, -1);
+    loadDay(yd).then((log) => setYesterday(log.steps === 0 && !log.rest ? { date: yd, log } : null));
+  }, [date, isToday]);
 
   // Live step counting while the app is open (Android can't read past step history).
   useEffect(() => {
@@ -72,7 +84,7 @@ export default function TodayScreen({ profile, date, setDate, day, updateDay, on
   const stepGoalMet = day.steps >= profile.stepGoal;
   useEffect(() => {
     loadStreak(profile.stepGoal).then(setStreak);
-  }, [profile.stepGoal, day.entries.length, stepGoalMet]);
+  }, [profile.stepGoal, day.entries.length, stepGoalMet, day.rest]);
 
   async function toggleTracking() {
     if (tracking) return setTracking(false);
@@ -117,10 +129,45 @@ export default function TodayScreen({ profile, date, setDate, day, updateDay, on
   }, [stepPct, activePct, date]);
 
   function removeEntry(id: string, name: string) {
-    Alert.alert('Delete exercise?', name, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => updateDay((d) => ({ ...d, entries: d.entries.filter((e) => e.id !== id) })) },
-    ]);
+    const index = day.entries.findIndex((e) => e.id === id);
+    const removed = day.entries[index];
+    if (!removed) return;
+    updateDay((d) => ({ ...d, entries: d.entries.filter((e) => e.id !== id) }));
+    haptic.tap();
+    toast(`Deleted ${name}`, {
+      action: 'Undo',
+      onAction: () =>
+        updateDay((d) => {
+          const entries = [...d.entries];
+          entries.splice(Math.min(index, entries.length), 0, removed);
+          return { ...d, entries };
+        }),
+    });
+  }
+
+  function saveEdit(next: LogEntry) {
+    updateDay((d) => ({ ...d, entries: d.entries.map((e) => (e.id === next.id ? next : e)) }));
+    setEditing(null);
+    haptic.success();
+    toast(`✓ ${next.name} updated`);
+  }
+
+  function toggleRest() {
+    const nowRest = !day.rest;
+    updateDay((d) => ({ ...d, rest: nowRest || undefined }));
+    haptic.tap();
+    if (nowRest) toast('😴 Rest day — streak stays alive');
+  }
+
+  async function saveYesterdaySteps() {
+    if (!yesterday) return;
+    const steps = Math.min(200000, Math.round(num(ySteps)));
+    if (steps <= 0) return;
+    await saveDay(yesterday.date, { ...yesterday.log, steps });
+    setYesterday(null);
+    haptic.success();
+    toast(`✓ Saved ${fmt(steps)} steps for yesterday`);
+    loadStreak(profile.stepGoal).then(setStreak);
   }
 
   const u = profile.units;
@@ -160,7 +207,7 @@ export default function TodayScreen({ profile, date, setDate, day, updateDay, on
       )}
 
       <FadeIn>
-        <Card style={{ backgroundColor: C.primary, borderWidth: 0 }}>
+        <LinearGradient colors={[...BRAND_GRADIENT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.hero}>
           <Text style={st.bigLabel}>Total calories burned</Text>
           <AnimatedNumber value={total} suffix=" kcal" style={st.big} />
           <View style={st.breakdown}>
@@ -168,8 +215,26 @@ export default function TodayScreen({ profile, date, setDate, day, updateDay, on
             <Stat label="Workout" value={workout} />
             <Stat label="Walking" value={walk} />
           </View>
-        </Card>
+        </LinearGradient>
       </FadeIn>
+
+      {isToday && yesterday && (
+        <FadeIn>
+          <Card style={{ borderColor: C.primary, borderWidth: 1 }}>
+            <Title style={{ marginBottom: 4 }}>Forgot yesterday&apos;s steps?</Title>
+            <Text style={st.hint}>Yesterday has no steps logged. Add them so your week stays accurate.</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 10 }}>
+              <Field label="Yesterday's steps" keyboardType="number-pad" value={ySteps} onChangeText={setYSteps} placeholder="e.g. 7500" />
+              <View style={{ width: 96 }}>
+                <Button title="Save" onPress={saveYesterdaySteps} disabled={num(ySteps) <= 0} />
+              </View>
+            </View>
+            <Pressable onPress={() => setYesterday(null)} style={{ alignSelf: 'center', marginTop: 10 }}>
+              <Text style={{ color: C.sub, fontSize: 13 }}>Skip</Text>
+            </Pressable>
+          </Card>
+        </FadeIn>
+      )}
 
       <FadeIn delay={80}>
         <Card>
@@ -198,22 +263,35 @@ export default function TodayScreen({ profile, date, setDate, day, updateDay, on
 
       <FadeIn delay={160}>
         <Card>
-          <Title>Workout ({fmt(workout)} kcal)</Title>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Title style={{ marginBottom: 0 }}>Workout ({fmt(workout)} kcal)</Title>
+            {day.entries.length === 0 && (
+              <Tap onPress={toggleRest} style={[st.restChip, day.rest && { backgroundColor: C.primarySoft }]}>
+                <Text style={[st.restChipText, day.rest && { color: C.primary }]}>{day.rest ? '😴 Rest day ✓' : '😴 Rest day?'}</Text>
+              </Tap>
+            )}
+          </View>
           {day.entries.length === 0 ? (
-            <Text style={st.empty}>No exercises yet — let&apos;s get moving! 💪</Text>
+            <Text style={[st.empty, { marginTop: 10 }]}>
+              {day.rest ? 'Planned rest — recovery is part of training. 💤' : 'No exercises yet — let\u2019s get moving! 💪'}
+            </Text>
           ) : (
-            day.entries.map((e) => (
-              <Pressable key={e.id} onLongPress={() => removeEntry(e.id, e.name)} style={st.entry}>
-                <View style={{ flex: 1 }}>
-                  <Text style={st.entryName}>{e.name}</Text>
-                  <Text style={st.entryDetail}>{entryDetail(e, u)}</Text>
-                </View>
-                <Text style={st.entryKcal}>{fmt(e.kcal)} kcal</Text>
-                <Pressable onPress={() => removeEntry(e.id, e.name)} hitSlop={10}>
-                  <Text style={st.x}>✕</Text>
+            <>
+              <View style={{ height: 6 }} />
+              {day.entries.map((e) => (
+                <Pressable key={e.id} onPress={() => setEditing(e)} onLongPress={() => removeEntry(e.id, e.name)} style={st.entry}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.entryName}>{e.name}</Text>
+                    <Text style={st.entryDetail}>{entryDetail(e, u)}</Text>
+                  </View>
+                  <Text style={st.entryKcal}>{fmt(e.kcal)} kcal</Text>
+                  <Pressable onPress={() => removeEntry(e.id, e.name)} hitSlop={10}>
+                    <Text style={st.x}>✕</Text>
+                  </Pressable>
                 </Pressable>
-              </Pressable>
-            ))
+              ))}
+              <Text style={st.hint}>Tap an exercise to edit it · ✕ deletes (with undo)</Text>
+            </>
           )}
           <View style={{ marginTop: 10 }}>
             <Button title="+ Add exercise" kind="ghost" onPress={onAddExercise} />
@@ -268,6 +346,7 @@ export default function TodayScreen({ profile, date, setDate, day, updateDay, on
       <Text style={st.disclaimer}>
         Estimates only. Resting = Mifflin-St Jeor BMR. Workouts use MET values plus the work of lifting the weight.
       </Text>
+      <EditEntryModal entry={editing} profile={profile} onSave={saveEdit} onClose={() => setEditing(null)} />
     </ScrollView>
   );
 }
@@ -292,6 +371,9 @@ const useSt = themed((C) =>
     streak: { backgroundColor: C.primarySoft, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center' },
     streakNum: { fontSize: 18, fontWeight: '800', color: C.primary },
     streakLabel: { fontSize: 11, color: C.primary, fontWeight: '600' },
+    hero: { borderRadius: 18, padding: 16, marginBottom: 12, shadowColor: '#E5484D', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
+    restChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: C.chip },
+    restChipText: { fontSize: 12, fontWeight: '700', color: C.sub },
     bigLabel: { color: '#FFE3D6', fontSize: 14, fontWeight: '600' },
     big: { color: '#fff', fontSize: 40, fontWeight: '800', marginVertical: 4 },
     breakdown: { flexDirection: 'row', marginTop: 10, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingVertical: 10 },

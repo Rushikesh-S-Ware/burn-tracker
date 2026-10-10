@@ -1,4 +1,6 @@
-# 🔥 Burn Tracker
+<p align="center"><img src="assets/icon.png" width="120" alt="Burn Tracker icon" /></p>
+
+# Burn Tracker
 
 **An offline workout, step and calorie tracker. No account, no ads, no internet — your data never leaves your phone.**
 
@@ -6,7 +8,7 @@ Log every set you lift, your daily steps and your body weight, and see how many 
 
 | | |
 |---|---|
-| 📱 **Android app** | [Download APK (v1.0.0)](https://github.com/Rushikesh-S-Ware/burn-tracker/releases/latest/download/burn-tracker-v1.0.0.apk) |
+| 📱 **Android app** | [Download APK (v1.1.0)](https://github.com/Rushikesh-S-Ware/burn-tracker/releases/latest/download/burn-tracker-v1.1.0.apk) |
 | 🌐 **Web app** (iPhone, desktop) | **https://rushikesh-s-ware.github.io/burn-tracker/** — open in Safari → Share → *Add to Home Screen* |
 | 💻 **Source** | https://github.com/Rushikesh-S-Ware/burn-tracker |
 
@@ -19,7 +21,9 @@ Log every set you lift, your daily steps and your body weight, and see how many 
 **Workout logging**
 - Exercises grouped by body part (Chest, Back, Legs, Shoulders, Arms, Core, Cardio) — ~80 built in, plus your own
 - Every set logged individually: weight, reps and the rest you actually took
-- "Last time" hint when you open an exercise, so you know what to beat
+- "Last time" hint and your personal record when you open an exercise, so you know what to beat
+- 🏆 New-PR celebration when you lift more than ever before
+- Tap any logged exercise to edit it; deleting has an Undo
 - Rest timer that records real rest time, with +15s / +30s adjustments
 - **Lock-screen controls** (Android): finish a set, start the next one and get an alarm when rest is over — without unlocking the phone
 
@@ -35,6 +39,8 @@ Log every set you lift, your daily steps and your body weight, and see how many 
 - Custom goals for anything ("Bench 100 kg", "Run 5 km", "Water 3 L")
 - Calendar view — coloured dots show which body parts you trained each day; tap a day for full details
 - Weekly balance ("Chest 2×, Legs 1×, Back 0× — last trained 9 days ago")
+- Per-exercise progress charts: top weight, estimated 1RM and volume over time
+- Planned rest days that keep your streak alive, and a nudge if you forgot yesterday's steps
 
 **Everything else**
 - Light / dark / system theme
@@ -106,7 +112,6 @@ There is no server, no analytics and no account. All data is stored on your devi
 
 - Health Connect / Apple Health sync for automatic step counts
 - Google Play release
-- Exercise personal records and charts
 
 ---
 

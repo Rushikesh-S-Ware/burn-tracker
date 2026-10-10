@@ -67,6 +67,8 @@ export default function HistoryScreen({ profile, onOpenDay }: Props) {
   const weekActive = week.reduce((s, d) => s + d.entries.reduce((t, e) => t + e.kcal, 0) + walkingKcal(d.steps, profile), 0);
   const weekSteps = week.reduce((s, d) => s + d.steps, 0);
   const weekWorkouts = week.filter((d) => d.entries.length > 0).length;
+  const weekRest = week.filter((d) => d.entries.length === 0 && d.rest).length;
+  const weekMissed = Math.max(0, 7 - weekWorkouts - weekRest);
   const groupCounts = GROUPS.map((g) => ({ ...g, count: last7.filter((date) => groupsOn(date).includes(g.key)).length }));
   const lastTrained = (g: Group) => {
     const dates = Object.keys(days)
@@ -98,6 +100,9 @@ export default function HistoryScreen({ profile, onOpenDay }: Props) {
             <Big label="Active kcal" value={fmt(weekActive)} />
             <Big label="Steps" value={fmt(weekSteps)} />
           </View>
+          <Text style={st.weekLine}>
+            {weekWorkouts} {weekWorkouts === 1 ? 'workout' : 'workouts'} · {weekRest} rest {weekRest === 1 ? 'day' : 'days'} · {weekMissed} {weekMissed === 1 ? 'day' : 'days'} without
+          </Text>
           <View style={st.balanceRow}>
             {groupCounts.map((g) => (
               <View key={g.key} style={[st.balancePill, g.count === 0 && { opacity: 0.4 }]}>
@@ -160,6 +165,7 @@ export default function HistoryScreen({ profile, onOpenDay }: Props) {
                       <View key={g} style={[st.dot, { backgroundColor: groupInfo(g).color }]} />
                     ))}
                     {hasSteps && gs.length === 0 && <View style={[st.dot, { backgroundColor: C.blue, opacity: 0.5 }]} />}
+                    {d?.rest && gs.length === 0 && <Text style={st.restGlyph}>💤</Text>}
                   </View>
                 </Tap>
               );
@@ -175,6 +181,10 @@ export default function HistoryScreen({ profile, onOpenDay }: Props) {
             <View style={st.legendItem}>
               <View style={[st.dot, { backgroundColor: C.blue, opacity: 0.5 }]} />
               <Text style={st.legendText}>step goal</Text>
+            </View>
+            <View style={st.legendItem}>
+              <Text style={{ fontSize: 9 }}>💤</Text>
+              <Text style={st.legendText}>rest day</Text>
             </View>
           </View>
           <Text style={st.hintText}>Tap a day to see what you did.</Text>
@@ -258,7 +268,10 @@ function DayModal({
         </View>
         <ScrollView style={{ maxHeight: 320 }}>
           {entries.length === 0 ? (
-            <Text style={st.empty}>{steps > 0 ? `Rest day · ${stepsToKm(steps, profile).toFixed(1)} km walked` : 'Nothing logged this day.'}</Text>
+            <Text style={st.empty}>
+              {day?.rest ? '😴 Planned rest day' : steps > 0 ? 'No workout' : 'Nothing logged this day.'}
+              {steps > 0 ? ` · ${stepsToKm(steps, profile).toFixed(1)} km walked` : ''}
+            </Text>
           ) : (
             entries.map((e) => (
               <View key={e.id} style={st.entry}>
@@ -308,7 +321,9 @@ function Big({ label, value }: { label: string; value: string }) {
 
 const useSt = themed((C) =>
   StyleSheet.create({
-    balanceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
+    weekLine: { color: C.sub, fontSize: 13, marginTop: 10 },
+    restGlyph: { fontSize: 7, lineHeight: 8 },
+    balanceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
     balancePill: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.chip, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4, gap: 5 },
     balanceText: { fontSize: 12, color: C.text, fontWeight: '600' },
     nudge: { color: C.primary, fontWeight: '600', marginTop: 10, fontSize: 13 },

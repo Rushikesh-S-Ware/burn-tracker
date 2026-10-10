@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from '../alert';
 import { cardioKcal, fromKg, Profile, SetRec, setsKcal, setsMinutes, toKg, Units } from '../calc';
 import { Exercise, findExercise } from '../exercises';
 import ExercisePicker from './ExercisePicker';
-import { loadLastEntry, LogEntry, pushRecent } from '../storage';
-import { Button, Card, Chip, Field, fmt, haptic, num, Title, toast } from '../ui';
+import { bestBodyweightReps, bestE1rm, HistoryItem, loadExerciseHistory, LogEntry, pushRecent, topWeight } from '../storage';
+import { LineChart } from '../charts';
+import { Button, Card, Chip, Field, fmt, haptic, num, Tap, Title, toast } from '../ui';
 import { themed, useC } from '../theme';
 import {
   addRestTime,
@@ -24,19 +25,49 @@ import {
 type Props = {
   profile: Profile;
   session: Session | null;
+  date: string; // day the exercise will be saved to (normally today)
   onSave: (entry: LogEntry) => void;
 };
+
+function prettyDay(date: string) {
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  if (date === todayKey) return null;
+  const d = new Date(date + 'T00:00');
+  const diff = Math.round((new Date(todayKey + 'T00:00').getTime() - d.getTime()) / 86400000);
+  const label = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return diff === 1 ? `Yesterday (${label})` : label;
+}
 
 function makeEntry(ex: Exercise, fields: Pick<LogEntry, 'setList' | 'minutes' | 'kcal'>): LogEntry {
   const time = Date.now();
   return { id: `${time}-${Math.random().toString(36).slice(2, 7)}`, exerciseId: ex.id, name: ex.name, time, ...fields };
 }
 
-export default function LogScreen({ profile, session, onSave }: Props) {
+export default function LogScreen({ profile, session, date, onSave }: Props) {
+  const st = useSt();
   const [cardio, setCardio] = useState<Exercise | null>(null);
+  const past = prettyDay(date);
+  const banner = past ? (
+    <View style={st.dateBanner}>
+      <Text style={st.dateBannerText}>📅 Logging to {past} — go to Today and tap › to return to today</Text>
+    </View>
+  ) : null;
 
-  if (session) return <StrengthForm profile={profile} session={session} onSave={onSave} />;
-  if (cardio) return <CardioForm ex={cardio} profile={profile} onBack={() => setCardio(null)} onSave={onSave} />;
+  if (session)
+    return (
+      <View style={{ flex: 1 }}>
+        {banner}
+        <StrengthForm profile={profile} session={session} onSave={onSave} />
+      </View>
+    );
+  if (cardio)
+    return (
+      <View style={{ flex: 1 }}>
+        {banner}
+        <CardioForm ex={cardio} profile={profile} onBack={() => setCardio(null)} onSave={onSave} />
+      </View>
+    );
 
   function pick(e: Exercise) {
     pushRecent(e.id);
@@ -45,31 +76,107 @@ export default function LogScreen({ profile, session, onSave }: Props) {
     setSession(newSession(e.id, profile.restSeconds));
   }
 
-  return <ExercisePicker onPick={pick} />;
+  return (
+    <View style={{ flex: 1 }}>
+      {banner}
+      <ExercisePicker onPick={pick} />
+    </View>
+  );
 }
 
-/** "Last time: 60 kg × 10/10/8 (Tue)" — shown under the exercise title so you know what to beat. */
-function LastTime({ exerciseId, units }: { exerciseId: string; units: Units }) {
+/** "Last time: 60 kg × 10/10/8 (Tue)" plus your PR and a button for the progress chart. */
+function LastTime({ exerciseId, units, isStrength }: { exerciseId: string; units: Units; isStrength: boolean }) {
   const st = useSt();
-  const [last, setLast] = useState<{ date: string; entry: LogEntry } | null | undefined>(undefined);
+  const C = useC();
+  const [history, setHistory] = useState<HistoryItem[] | null>(null);
+  const [showChart, setShowChart] = useState(false);
   useEffect(() => {
-    loadLastEntry(exerciseId).then(setLast);
+    loadExerciseHistory(exerciseId).then(setHistory);
   }, [exerciseId]);
-  if (!last) return <Text style={st.lastTime}>{last === null ? 'First time logging this — go get it! 🚀' : ' '}</Text>;
-  const { entry, date } = last;
+  if (!history) return <Text style={st.lastTime}> </Text>;
+  if (history.length === 0) return <Text style={[st.lastTime, { marginBottom: 12 }]}>First time logging this — go get it! 🚀</Text>;
+  const { entry, date } = history[history.length - 1];
   const when = new Date(date + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   let detail = '';
   if (entry.setList?.length) {
-    const reps = entry.setList.map((s) => s.reps).join('/');
-    const ws = entry.setList.map((s) => +fromKg(s.weightKg, units).toFixed(1)).filter((w) => w > 0);
-    const w = ws.length ? `${Math.max(...ws)} ${units} × ` : '';
-    detail = `${w}${reps}`;
+    const reps = entry.setList.map((x) => x.reps).join('/');
+    const ws = entry.setList.map((x) => +fromKg(x.weightKg, units).toFixed(1)).filter((w) => w > 0);
+    detail = `${ws.length ? `${Math.max(...ws)} ${units} × ` : ''}${reps}`;
   } else if (entry.sets) detail = `${entry.weightKg ? +fromKg(entry.weightKg, units).toFixed(1) + ' ' + units + ' × ' : ''}${entry.sets}×${entry.reps}`;
   else detail = `${entry.minutes} min`;
+  const prKg = Math.max(...history.map((h) => topWeight(h.entry)));
+  const prReps = Math.max(...history.map((h) => bestBodyweightReps(h.entry)));
+  const pr = prKg > 0 ? `${+fromKg(prKg, units).toFixed(1)} ${units}` : prReps > 0 ? `${prReps} reps` : null;
   return (
-    <Text style={st.lastTime}>
-      ⏮ Last time ({when}): <Text style={{ fontWeight: '700' }}>{detail}</Text> · {entry.kcal} kcal
-    </Text>
+    <View style={{ marginBottom: 12 }}>
+      <Text style={st.lastTime}>
+        ⏮ Last time ({when}): <Text style={{ fontWeight: '700' }}>{detail}</Text> · {entry.kcal} kcal
+      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+        {pr && (
+          <Text style={st.lastTime}>
+            🏆 PR: <Text style={{ fontWeight: '700', color: C.primary }}>{pr}</Text>
+          </Text>
+        )}
+        {isStrength && history.length >= 2 && (
+          <Tap onPress={() => setShowChart(true)} style={st.chartBtn}>
+            <Text style={st.chartBtnText}>📈 Progress</Text>
+          </Tap>
+        )}
+      </View>
+      {showChart && <ExerciseChart history={history} units={units} onClose={() => setShowChart(false)} />}
+    </View>
+  );
+}
+
+function ExerciseChart({ history, units, onClose }: { history: HistoryItem[]; units: Units; onClose: () => void }) {
+  const st = useSt();
+  const C = useC();
+  const [mode, setMode] = useState<'weight' | 'e1rm' | 'volume'>('weight');
+  const recent = history.slice(-20);
+  const fmtW = (kg: number) => +fromKg(kg, units).toFixed(1);
+  const volume = (e: LogEntry) => (e.setList ?? []).reduce((t, x) => t + x.weightKg * x.reps, 0);
+  const points = recent.map((h) => ({
+    label: h.date.slice(5),
+    value: mode === 'weight' ? fmtW(topWeight(h.entry)) : mode === 'e1rm' ? fmtW(bestE1rm(h.entry)) : Math.round(fmtW(volume(h.entry))),
+  }));
+  const best = Math.max(...points.map((pt) => pt.value));
+  const first = points[0]?.value ?? 0;
+  const last = points[points.length - 1]?.value ?? 0;
+  const change = Math.round((last - first) * 10) / 10;
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={st.backdrop} onPress={onClose} />
+      <View style={st.sheet}>
+        <View style={st.handle} />
+        <Text style={st.sheetTitle}>📈 {history[0].entry.name}</Text>
+        <View style={{ flexDirection: 'row', marginBottom: 12 }}>
+          <Chip text="Top weight" active={mode === 'weight'} onPress={() => setMode('weight')} />
+          <Chip text="Est. 1RM" active={mode === 'e1rm'} onPress={() => setMode('e1rm')} />
+          <Chip text="Volume" active={mode === 'volume'} onPress={() => setMode('volume')} />
+        </View>
+        <LineChart points={points} color={C.primary} reference={best} referenceLabel="best" />
+        <View style={{ flexDirection: 'row', marginTop: 12, marginBottom: 14 }}>
+          <Big label={`Best (${units})`} value={String(best)} />
+          <Big label="Sessions" value={String(history.length)} />
+          <Big label="Change" value={`${change > 0 ? '+' : ''}${change}`} color={change > 0 ? C.green : change < 0 ? C.red : C.text} />
+        </View>
+        <Text style={st.hintSmall}>
+          {mode === 'e1rm' ? 'Estimated one-rep max (Epley) from your best set each session.' : mode === 'volume' ? `Total weight × reps per session (${units}).` : 'Heaviest set each session.'}
+        </Text>
+        <Button title="Close" kind="ghost" onPress={onClose} />
+      </View>
+    </Modal>
+  );
+}
+
+function Big({ label, value, color }: { label: string; value: string; color?: string }) {
+  const C = useC();
+  return (
+    <View style={{ flex: 1 }}>
+      <Text style={{ fontSize: 22, fontWeight: '800', color: color ?? C.text }}>{value}</Text>
+      <Text style={{ color: C.sub, fontSize: 12 }}>{label}</Text>
+    </View>
   );
 }
 
@@ -111,10 +218,27 @@ function StrengthForm({ profile, session, onSave }: { profile: Profile; session:
     const done = stopRest(session); // rest after the final set isn't counted
     const finalSets = toSets(done.rows, profile);
     const kcalSaved = Math.round(setsKcal(ex, profile, finalSets));
-    onSave(makeEntry(ex, { setList: finalSets, kcal: kcalSaved }));
-    haptic.success();
-    toast(`💪 ${ex.name} saved · +${kcalSaved} kcal`);
+    const entry = makeEntry(ex, { setList: finalSets, kcal: kcalSaved });
+    onSave(entry);
     setSession(null);
+    haptic.success();
+    // Personal record? Compare against every earlier session.
+    loadExerciseHistory(ex.id).then((hist) => {
+      const prev = hist.filter((h) => h.entry.id !== entry.id);
+      const oldKg = Math.max(0, ...prev.map((h) => topWeight(h.entry)));
+      const oldReps = Math.max(0, ...prev.map((h) => bestBodyweightReps(h.entry)));
+      const newKg = topWeight(entry);
+      const newReps = bestBodyweightReps(entry);
+      if (prev.length > 0 && newKg > 0 && newKg > oldKg) {
+        haptic.success();
+        toast(`🏆 New PR! ${ex.name} ${+fromKg(newKg, profile.units).toFixed(1)} ${profile.units}`, { duration: 4000 });
+      } else if (prev.length > 0 && newKg === 0 && newReps > oldReps) {
+        haptic.success();
+        toast(`🏆 New PR! ${ex.name} ${newReps} reps`, { duration: 4000 });
+      } else {
+        toast(`💪 ${ex.name} saved · +${kcalSaved} kcal`);
+      }
+    });
   }
 
   function discard() {
@@ -137,7 +261,7 @@ function StrengthForm({ profile, session, onSave }: { profile: Profile; session:
 
       <Card>
         <Title style={{ marginBottom: 2 }}>{ex.name}</Title>
-        <LastTime exerciseId={ex.id} units={u} />
+        <LastTime exerciseId={ex.id} units={u} isStrength />
         <View style={st.headRow}>
           <Text style={[st.head, { width: 34 }]}>Set</Text>
           <Text style={[st.head, st.col]}>{ex.kind === 'strength' && ex.bodyFraction ? `+${u}` : u}</Text>
@@ -307,7 +431,7 @@ function CardioForm({
       </Pressable>
       <Card>
         <Title style={{ marginBottom: 2 }}>{ex.name}</Title>
-        <LastTime exerciseId={ex.id} units={profile.units} />
+        <LastTime exerciseId={ex.id} units={profile.units} isStrength={false} />
         <View style={{ flexDirection: 'row', marginBottom: 12 }}>
           <Field label="Duration" suffix="min" keyboardType="number-pad" value={minutes} onChangeText={setMinutes} placeholder="30" autoFocus />
         </View>
@@ -365,6 +489,15 @@ const useSt = themed((C) =>
     previewVal: { fontSize: 28, fontWeight: '800', color: C.primary },
     problem: { color: C.red, textAlign: 'center', marginBottom: 10 },
     tip: { color: C.sub, fontSize: 12, textAlign: 'center' },
-    lastTime: { color: C.sub, fontSize: 13, marginBottom: 12 },
+    dateBanner: { backgroundColor: C.primarySoft, marginHorizontal: 16, marginTop: 12, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+    dateBannerText: { color: C.primary, fontWeight: '600', fontSize: 13 },
+    lastTime: { color: C.sub, fontSize: 13 },
+    chartBtn: { backgroundColor: C.primarySoft, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+    chartBtnText: { color: C.primary, fontWeight: '700', fontSize: 12 },
+    backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+    sheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 28 },
+    handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.line, alignSelf: 'center', marginBottom: 12 },
+    sheetTitle: { fontSize: 19, fontWeight: '800', color: C.text, marginBottom: 12 },
+    hintSmall: { color: C.sub, fontSize: 12, marginBottom: 12 },
   }),
 );

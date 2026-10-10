@@ -20,6 +20,7 @@ export type DayLog = {
   entries: LogEntry[];
   steps: number; // manually entered + live counted
   foodKcal: number; // optional calories eaten
+  rest?: boolean; // marked as a planned rest day (keeps the streak alive)
 };
 
 const EMPTY_DAY: DayLog = { entries: [], steps: 0, foodKcal: 0 };
@@ -105,7 +106,7 @@ export async function loadStreak(stepGoal: number): Promise<number> {
     return dateKey(d);
   });
   const days = await loadDays(dates);
-  const active = (d: DayLog) => d.entries.length > 0 || (stepGoal > 0 && d.steps >= stepGoal);
+  const active = (d: DayLog) => d.entries.length > 0 || (stepGoal > 0 && d.steps >= stepGoal) || !!d.rest;
   let i = active(days[dates[0]]) ? 0 : 1;
   let streak = 0;
   while (i < dates.length && active(days[dates[i]])) {
@@ -143,3 +144,35 @@ export async function loadLastEntry(exerciseId: string): Promise<{ date: string;
   }
   return null;
 }
+
+// ---------- exercise history & personal records ----------
+
+export type HistoryItem = { date: string; entry: LogEntry };
+
+/** Every logged entry for an exercise in the last `days` days, oldest first. */
+export async function loadExerciseHistory(exerciseId: string, days = 365): Promise<HistoryItem[]> {
+  const dates = Array.from({ length: days }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    return dateKey(d);
+  });
+  const all = await loadDays(dates);
+  const out: HistoryItem[] = [];
+  for (const date of [...dates].reverse()) {
+    for (const entry of all[date].entries) if (entry.exerciseId === exerciseId) out.push({ date, entry });
+  }
+  return out;
+}
+
+/** Heaviest weight lifted in an entry (kg), or 0 for bodyweight/cardio. */
+export const topWeight = (e: LogEntry) => (e.setList?.length ? Math.max(...e.setList.map((s) => s.weightKg)) : (e.weightKg ?? 0));
+
+/** Best estimated one-rep max in an entry (Epley: w × (1 + reps/30)). */
+export const bestE1rm = (e: LogEntry) => {
+  const sets = e.setList?.length ? e.setList : e.sets && e.weightKg ? [{ weightKg: e.weightKg, reps: e.reps ?? 1 }] : [];
+  return sets.reduce((m, s) => Math.max(m, s.weightKg * (1 + Math.min(s.reps, 12) / 30)), 0);
+};
+
+/** Most reps done in a single set with no external weight (push-ups, pull-ups…). */
+export const bestBodyweightReps = (e: LogEntry) =>
+  e.setList?.length ? e.setList.filter((s) => s.weightKg === 0).reduce((m, s) => Math.max(m, s.reps), 0) : 0;

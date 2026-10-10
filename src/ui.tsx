@@ -14,6 +14,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
 import { themed, useC } from './theme';
 
@@ -89,6 +90,7 @@ const useSt = themed((C) =>
     input: { flex: 1, minWidth: 0, fontSize: 17, paddingVertical: 10, color: C.text },
     suffix: { color: C.sub, fontSize: 14, marginLeft: 4 },
     btn: { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+    btnInner: { paddingVertical: 14, alignItems: 'center', alignSelf: 'stretch' },
     btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
     chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: C.chip, marginRight: 8 },
     chipText: { color: C.text, fontWeight: '600' },
@@ -96,6 +98,8 @@ const useSt = themed((C) =>
     toast: {
       position: 'absolute',
       alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
       bottom: 80,
       backgroundColor: C.dark ? '#ECEFF4' : '#1B2330',
       paddingHorizontal: 18,
@@ -139,6 +143,8 @@ export function Field({ label, suffix, ...props }: TextInputProps & { label: str
   );
 }
 
+export const BRAND_GRADIENT = ['#FF8A4C', '#FF6B2C', '#E5484D'] as const;
+
 export function Button({
   title,
   onPress,
@@ -153,10 +159,32 @@ export function Button({
   const s = useSt();
   const C = useC();
   const bg = { primary: C.primary, ghost: C.primarySoft, danger: C.red, success: C.green }[kind];
+  const label = <Text style={[s.btnText, kind === 'ghost' && { color: C.primary }]}>{title}</Text>;
+  if (kind === 'primary') {
+    return (
+      <Tap onPress={onPress} disabled={disabled} style={[s.btn, { padding: 0, overflow: 'hidden' }]}>
+        <LinearGradient colors={[...BRAND_GRADIENT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.btnInner}>
+          {label}
+        </LinearGradient>
+      </Tap>
+    );
+  }
   return (
     <Tap onPress={onPress} disabled={disabled} style={[s.btn, { backgroundColor: bg }]}>
-      <Text style={[s.btnText, kind === 'ghost' && { color: C.primary }]}>{title}</Text>
+      {label}
     </Tap>
+  );
+}
+
+/** Soft brand-coloured glow behind the top of a screen, so pages don't feel flat. */
+export function PageGlow() {
+  const C = useC();
+  return (
+    <LinearGradient
+      pointerEvents="none"
+      colors={C.dark ? ['rgba(255,107,44,0.16)', 'rgba(255,107,44,0)'] : ['rgba(255,138,76,0.28)', 'rgba(255,138,76,0)']}
+      style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 260 }}
+    />
   );
 }
 
@@ -260,31 +288,50 @@ export function FadeIn({ children, delay = 0, style }: { children: ReactNode; de
   return <Animated.View style={[style, { opacity: anim, transform: [{ translateY }] }]}>{children}</Animated.View>;
 }
 
-// ---------- toast: toast('Saved!') from anywhere, <ToastHost/> renders it ----------
+// ---------- toast: toast('Saved!') from anywhere; optional action button, e.g. Undo ----------
 
-let showToast: ((msg: string) => void) | null = null;
-export const toast = (msg: string) => showToast?.(msg);
+type ToastOpts = { action?: string; onAction?: () => void; duration?: number };
+let showToast: ((msg: string, opts?: ToastOpts) => void) | null = null;
+export const toast = (msg: string, opts?: ToastOpts) => showToast?.(msg, opts);
 
 export function ToastHost() {
   const s = useSt();
+  const C = useC();
   const [msg, setMsg] = useState('');
+  const [opts, setOpts] = useState<ToastOpts>({});
   const anim = useState(() => new Animated.Value(0))[0];
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hide = () => Animated.timing(anim, { toValue: 0, duration: 250, useNativeDriver: true }).start();
   useEffect(() => {
-    showToast = (m) => {
+    showToast = (m, o = {}) => {
       setMsg(m);
+      setOpts(o);
       if (timer.current) clearTimeout(timer.current);
       Animated.spring(anim, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 8 }).start();
-      timer.current = setTimeout(() => Animated.timing(anim, { toValue: 0, duration: 250, useNativeDriver: true }).start(), 2200);
+      timer.current = setTimeout(hide, o.duration ?? (o.action ? 5000 : 2200));
     };
     return () => {
       showToast = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anim]);
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] });
   return (
-    <Animated.View pointerEvents="none" style={[s.toast, { opacity: anim, transform: [{ translateY }] }]}>
+    <Animated.View pointerEvents={opts.action ? 'box-none' : 'none'} style={[s.toast, { opacity: anim, transform: [{ translateY }] }]}>
       <Text style={s.toastText}>{msg}</Text>
+      {opts.action ? (
+        <Pressable
+          onPress={() => {
+            opts.onAction?.();
+            if (timer.current) clearTimeout(timer.current);
+            hide();
+          }}
+          hitSlop={10}
+          style={{ marginLeft: 14 }}
+        >
+          <Text style={[s.toastText, { color: C.primary }]}>{opts.action}</Text>
+        </Pressable>
+      ) : null}
     </Animated.View>
   );
 }

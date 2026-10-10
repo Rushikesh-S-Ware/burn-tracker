@@ -7,7 +7,7 @@ import { DEFAULT_PROFILE, Profile } from './src/calc';
 import { DayLog, dateKey, loadDay, loadProfile, LogEntry, saveDay, saveProfile } from './src/storage';
 import { findExercise, loadCustomExercises } from './src/exercises';
 import { themed, ThemeProvider, useC } from './src/theme';
-import { Tap, ToastHost } from './src/ui';
+import { PageGlow, Tap, ToastHost } from './src/ui';
 import { handleNotificationAction, loadSession, Session, setupNotifications, subscribe } from './src/workout';
 import { registerWorkoutTask } from './src/workoutTask';
 import TodayScreen from './src/screens/TodayScreen';
@@ -109,6 +109,7 @@ function Main() {
     <>
       <StatusBar style={C.dark ? 'light' : 'dark'} />
       <SafeAreaView style={st.fill} edges={['top', 'bottom']}>
+        <PageGlow />
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           {!profile ? (
             <ProfileScreen profile={DEFAULT_PROFILE} onSave={handleSaveProfile} firstRun />
@@ -126,7 +127,7 @@ function Main() {
                     workoutName={session ? findExercise(session.exerciseId)?.name : undefined}
                   />
                 )}
-                {tab === 'log' && <LogScreen profile={profile} session={session} onSave={handleAddEntry} />}
+                {tab === 'log' && <LogScreen profile={profile} session={session} date={date} onSave={handleAddEntry} />}
                 {tab === 'progress' && <ProgressScreen profile={profile} onProfileChange={handleSaveProfile} />}
                 {tab === 'history' && (
                   <HistoryScreen

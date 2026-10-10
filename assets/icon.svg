@@ -1,0 +1,22 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF8A4C"/><stop offset="1" stop-color="#E5484D"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#FFE9DF"/>
+    </linearGradient>
+    <linearGradient id="inner" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF8A4C"/><stop offset="1" stop-color="#E5484D"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <g transform="translate(512 512) scale(0.86) translate(-512 -512)">
+    <path d="M789.1858582251266 234.8141417748734 A392 392 0 1 1 234.8141417748733 234.8141417748734" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="58" stroke-linecap="round"/>
+    <g transform="translate(512 530) scale(1.18) translate(-512 -530)">
+      <path d="M512 300 C575 385 672 430 672 560 C672 655 602 722 512 722 C422 722 352 655 352 560 C352 498 383 460 410 432 C404 486 430 508 455 503 C428 445 462 372 512 300 Z" fill="url(#flame)"/>
+      <path d="M512 505 C548 545 588 565 588 622 C588 665 555 698 512 698 C469 698 436 665 436 622 C436 594 451 577 464 566 C461 592 476 603 489 598 C476 566 492 538 512 505 Z" fill="url(#inner)"/>
+    </g></g>
+</svg>
